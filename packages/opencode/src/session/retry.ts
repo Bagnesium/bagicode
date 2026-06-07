@@ -31,6 +31,14 @@ function cap(ms: number) {
   return Math.min(ms, RETRY_MAX_DELAY)
 }
 
+function backoff(attempt: number) {
+  return cap(Math.min(RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1), RETRY_MAX_DELAY_NO_HEADERS))
+}
+
+function isDelayHint(value: number) {
+  return Number.isFinite(value) && value >= 0
+}
+
 export function delay(attempt: number, error?: MessageV2.APIError) {
   if (error) {
     const headers = error.data.responseHeaders
@@ -38,15 +46,13 @@ export function delay(attempt: number, error?: MessageV2.APIError) {
       const retryAfterMs = headers["retry-after-ms"]
       if (retryAfterMs) {
         const parsedMs = Number.parseFloat(retryAfterMs)
-        if (!Number.isNaN(parsedMs)) {
-          return cap(parsedMs)
-        }
+        if (isDelayHint(parsedMs)) return cap(parsedMs)
       }
 
       const retryAfter = headers["retry-after"]
       if (retryAfter) {
         const parsedSeconds = Number.parseFloat(retryAfter)
-        if (!Number.isNaN(parsedSeconds)) {
+        if (isDelayHint(parsedSeconds)) {
           // convert seconds to milliseconds
           return cap(Math.ceil(parsedSeconds * 1000))
         }
@@ -57,11 +63,11 @@ export function delay(attempt: number, error?: MessageV2.APIError) {
         }
       }
 
-      return cap(RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1))
+      return backoff(attempt)
     }
   }
 
-  return cap(Math.min(RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1), RETRY_MAX_DELAY_NO_HEADERS))
+  return backoff(attempt)
 }
 
 export function retryable(error: Err, provider: string) {
